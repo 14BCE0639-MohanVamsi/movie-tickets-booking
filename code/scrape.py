@@ -1,0 +1,56 @@
+
+import csv
+from db.db import Database
+from themoviedb.tmdb import TMDBApi
+
+
+sagat = ['../datas/imdb_flops_titles.csv']	
+
+D = Database('boxoffice.db')
+TMDB = TMDBApi()
+
+# load csvs
+for sagatList in sagat:
+    with open(sagatList, 'rb') as csvfile:
+        reader = csv.reader(csvfile, delimiter=',', quotechar='"')
+        for movie in reader:
+            try:
+                # fix up movie names
+                movieName = movie[0]
+                paren = str.rfind(movie[0], " (")
+                if paren > 0:
+                    movieName = movieName[0:paren]
+
+                print "Processing movie: " + movieName
+                mid = TMDB.MovieSearch(movieName)[0]['id']
+                info = TMDB.MovieById(mid)
+                cast = TMDB.MovieCastById(mid)
+
+                if len(cast['cast']) == 0:
+                    continue
+
+                prod_companies = info['production_companies']
+                if len(prod_companies) == 0:
+                    prod_companies = [{'id': None, 'name': None}]
+
+                if not D.AddMovie(info['id'],
+                                  info['title'],
+                                  info['release_date'],
+                                  prod_companies[0]['id'],
+                                  prod_companies[0]['name']):
+                    continue
+
+                for genre in info['genres']:
+                    D.AddGenre(info['id'], genre['id'], genre['name'])
+
+                for person in cast['crew']:
+                    if person['job'] == "Director":
+                        D.AddPerson(person['id'], person['name'])
+                        D.AddCast(mid, person['id'], 100)
+                for person in cast['cast'][0:4]:
+                    D.AddPerson(person['id'], person['name'])
+                    D.AddCast(mid, person['id'], person['order'])
+
+            except Exception, e:
+                print "Error with movie: " + movieName
+                print e.message
